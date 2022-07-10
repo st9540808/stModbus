@@ -40,7 +40,7 @@ extern "C" {
 
 // Global variable for modbus context
 _stmodbus_context_t g_mbusContext[STMODBUS_COUNT_CONTEXT];
-Modbus_ResponseType    g_userError = MBUS_RESPONSE_OK;
+Modbus_ResponseType g_userError = MBUS_RESPONSE_OK;
 
 void lock() {}
 
@@ -51,7 +51,8 @@ void unlock() {}
  * open new modbus context for new port
  * return: MODBUS_ERROR - if can't open context
  */
-mbus_t mbus_open(Modbus_Conf_t *pconf) {
+mbus_t mbus_open(Modbus_Conf_t *pconf)
+{
   mbus_t context;
   for (context = 0; context < STMODBUS_COUNT_CONTEXT; context++) {
     if (g_mbusContext[context].open == 0) {
@@ -70,13 +71,15 @@ mbus_t mbus_open(Modbus_Conf_t *pconf) {
   return context;
 }
 
-mbus_status_t mbus_flush(const mbus_t context) {
+mbus_status_t mbus_flush(const mbus_t context)
+{
   g_mbusContext[context].crc16 = 0xFFFF;
   g_mbusContext[context].state = MBUS_STATE_IDLE;
   return MBUS_OK;
 }
 
-mbus_status_t mbus_response(mbus_t mb_context, Modbus_ResponseType response) {
+mbus_status_t mbus_response(mbus_t mb_context, Modbus_ResponseType response)
+{
 
   if (response != MBUS_RESPONSE_OK) {
     return mbus_send_error(mb_context, response);
@@ -85,12 +88,14 @@ mbus_status_t mbus_response(mbus_t mb_context, Modbus_ResponseType response) {
   return MBUS_ERROR;
 }
 
-uint16_t mbus_error(Modbus_ResponseType error) {
-    g_userError = error;
-    return 0;
+uint16_t mbus_error(Modbus_ResponseType error)
+{
+  g_userError = error;
+  return 0;
 }
 
-inline mbus_status_t mbus_poll_response(mbus_t mb_context) {
+inline mbus_status_t mbus_poll_response(mbus_t mb_context)
+{
   stmbCallBackFunc func = 0;
   _stmodbus_context_t *ctx = &g_mbusContext[mb_context];
   int read = 1, la;
@@ -134,7 +139,8 @@ inline mbus_status_t mbus_poll_response(mbus_t mb_context) {
     return func(mb_context);
   }
 
-  la = mbus_proto_address((Modbus_ConnectFuncType)ctx->header.func, (int*)&read);
+  la = mbus_proto_address((Modbus_ConnectFuncType)ctx->header.func,
+                          (int *)&read);
   if (la > 0) {
     la += ctx->header.addr;
   }
@@ -145,15 +151,15 @@ inline mbus_status_t mbus_poll_response(mbus_t mb_context) {
     if (read && ctx->conf.read) {
       g_userError = MBUS_RESPONSE_OK;
       for (int i = 0; i < ctx->header.num; i++) {
-        
+
         d = ctx->conf.read(la + i);
         ctx->conf.sendbuf[3 + (i << 1)] = d >> 8;
         ctx->conf.sendbuf[3 + (i << 1) + 1] = d & 0xFF;
       }
       if (g_userError == MBUS_RESPONSE_OK) {
-          return mbus_send_data(mb_context, 3 + ctx->conf.sendbuf[2]);
-      }else {
-          return mbus_response(mb_context, g_userError);
+        return mbus_send_data(mb_context, 3 + ctx->conf.sendbuf[2]);
+      } else {
+        return mbus_response(mb_context, g_userError);
       }
     } else if (ctx->conf.write) {
       uint16_t *value;
@@ -173,9 +179,10 @@ inline mbus_status_t mbus_poll_response(mbus_t mb_context) {
         return mbus_send_data(mb_context, 6);
 
       case MBUS_FUNC_WRITE_REGS:
-        value = (uint16_t *)ctx->conf.recvbuf;
         for (int i = 0; i < ctx->header.num; i++) {
-          ctx->conf.write(la + i, *value);
+          uint16_t regvalue = ((uint16_t)ctx->conf.recvbuf[i * 2] << 8)
+                            | ((uint16_t)ctx->conf.recvbuf[i * 2 + 1]);
+          ctx->conf.write(la + i, regvalue);
         }
         ctx->conf.sendbuf[2] = ctx->header.addr >> 8;
         ctx->conf.sendbuf[3] = ctx->header.addr & 0xFF;
@@ -194,7 +201,8 @@ inline mbus_status_t mbus_poll_response(mbus_t mb_context) {
  * close modbus context
  * return: none
  */
-mbus_status_t mbus_poll(mbus_t mb_context, uint8_t byte) {
+mbus_status_t mbus_poll(mbus_t mb_context, uint8_t byte)
+{
   // State machine
   _stmodbus_context_t *ctx = &g_mbusContext[mb_context];
 
@@ -334,23 +342,27 @@ mbus_status_t mbus_poll(mbus_t mb_context, uint8_t byte) {
   return MBUS_OK;
 }
 
-mbus_context_t mbus_device(mbus_t mb_context) {
+mbus_context_t mbus_device(mbus_t mb_context)
+{
   return (mbus_context_t)&g_mbusContext[mb_context];
 }
 
-mbus_context_t mbus_context(mbus_t mb_context) {
+mbus_context_t mbus_context(mbus_t mb_context)
+{
   if (g_mbusContext[mb_context].open)
     return (mbus_context_t)&g_mbusContext[mb_context];
   return 0;
 }
 
-mbus_status_t mbus_send_error(mbus_t mb_context, Modbus_ResponseType response) {
+mbus_status_t mbus_send_error(mbus_t mb_context, Modbus_ResponseType response)
+{
   uint16_t *pbuf = (uint16_t *)(g_mbusContext[mb_context].conf.sendbuf + 2);
   *pbuf = 0x8300 | (uint8_t)response;
   return mbus_send_data(mb_context, 4);
 }
 
-mbus_status_t mbus_send_data(mbus_t mb_context, uint16_t size) {
+mbus_status_t mbus_send_data(mbus_t mb_context, uint16_t size)
+{
   // if size > ( conf.send_sz-2) error
   uint16_t crc32 = 0xFFFF;
   const _stmodbus_context_t *ctx = &g_mbusContext[mb_context];
@@ -369,7 +381,8 @@ mbus_status_t mbus_send_data(mbus_t mb_context, uint16_t size) {
 }
 
 mbus_status_t mbus_connect(const mbus_t mb_context, stmbCallBackFunc func,
-                           Modbus_ConnectFuncType type) {
+                           Modbus_ConnectFuncType type)
+{
 #if STMODBUS_COUNT_FUNC > 0
   _stmodbus_context_t *ctx = &g_mbusContext[mb_context];
   for (int i = 0; i < STMODBUS_COUNT_FUNC; i++) {
@@ -383,7 +396,8 @@ mbus_status_t mbus_connect(const mbus_t mb_context, stmbCallBackFunc func,
   return MBUS_ERROR;
 }
 
-int mbus_proto_address( Modbus_ConnectFuncType func, int *r) {
+int mbus_proto_address(Modbus_ConnectFuncType func, int *r)
+{
   int adr = 0;
   *r = 1;
   switch (func) {
